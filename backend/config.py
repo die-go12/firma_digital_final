@@ -1,0 +1,1 @@
+PIMIENTA_SECRETA = "Proyecto_Cripto_Seguro_2025_UPCH_@Secret"
