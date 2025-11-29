@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Firma Digital</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        /* Estilos extra para la vista previa */
+        #preview-container {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px dashed #eee;
+            display: none; /* Oculto por defecto */
+        }
+        iframe {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .file-info {
+            font-size: 0.9em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        /* Estilo para el botón secundario (Llave Pública) */
+        .btn-outline-pink {
+            border-color: var(--neon-pink);
+            color: var(--neon-pink);
+            margin-top: 10px;
+        }
+        .btn-outline-pink:hover {
+            background-color: var(--neon-pink);
+            color: white;
+            box-shadow: 0 0 15px var(--neon-pink);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo"> Mi Panel Seguro</div>
+        <nav>
+            <span id="user-display">Cargando...</span>
+            <a href="#" id="logout-btn" style="margin-left: 15px; color: #ffadad;">Salir</a>
+        </nav>
+    </header>
+
+    <div class="container">
+        <div id="status-msg"></div>
+
+        <div class="card">
+            <h3>1. Mi Identidad Digital</h3>
+            <p>Gestiona tu par de claves criptográficas.</p>
+            
+            <button id="btn-cert" class="btn"> Emitir / Renovar Certificado</button>
+            
+            <button id="btn-download-key" class="btn btn-outline-pink">
+                ⬇ Descargar Mi Llave Pública (.pem)
+            </button>
+            <p style="font-size: 0.8rem; margin-top: 5px; color: #666;">
+                *Necesaria para la Auditoría Externa.
+            </p>
+        </div>
+
+        <div class="card">
+            <h3>2. Firmar Documento PDF</h3>
+            <p>Sube tu PDF para firmarlo digitalmente.</p>
+            <form id="sign-form">
+                <div class="form-group">
+                    <input type="file" id="pdf-file" accept="application/pdf" required>
+                </div>
+
+                <div id="preview-container">
+                    <h4>📄 Vista Previa del Documento</h4>
+                    <div class="file-info" id="file-name-display"></div>
+                    <iframe id="pdf-preview" src=""></iframe>
+                </div>
+                <br>
+                <button type="submit" class="btn btn-success"> Firmar y Descargar (.bin)</button>
+            </form>
+        </div>
+    </div>
+
+    <script type="module">
+        import { emitirCertificado, firmarPDF } from './js/api.js';
+
+        // URL base para descargas directas
+        const API_URL = "http://127.0.0.1:8000"; 
+
+        const usuarioId = sessionStorage.getItem('usuario_id');
+        const statusDiv = document.getElementById('status-msg');
+
+        // Verificar sesión
+        if (!usuarioId) {
+            window.location.href = 'index.html';
+        } else {
+            document.getElementById('user-display').innerText = `ID Usuario: ${usuarioId}`;
+        }
+
+        // Logout
+        document.getElementById('logout-btn').addEventListener('click', (e) => {
+            e.preventDefault();
+            sessionStorage.clear();
+            localStorage.clear();
+            window.location.href = 'index.html';
+        });
+
+        function showMsg(msg, type) {
+            statusDiv.className = type;
+            statusDiv.innerText = msg;
+            statusDiv.style.display = 'block';
+        }
+
+        // --- LÓGICA DE VISTA PREVIA ---
+        const fileInput = document.getElementById('pdf-file');
+        const previewContainer = document.getElementById('preview-container');
+        const pdfPreview = document.getElementById('pdf-preview');
+        const fileNameDisplay = document.getElementById('file-name-display');
+
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file && file.type === "application/pdf") {
+                const fileUrl = URL.createObjectURL(file);
+                pdfPreview.src = fileUrl;
+                fileNameDisplay.textContent = `Archivo seleccionado: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`;
+                previewContainer.style.display = 'block';
+            } else {
+                previewContainer.style.display = 'none';
+            }
+        });
+
+        // --- 1. EMITIR CERTIFICADO ---
+        document.getElementById('btn-cert').addEventListener('click', async () => {
+            statusDiv.style.display = 'none';
+            try {
+                const res = await emitirCertificado(usuarioId);
+                console.log("Certificado:", res); 
+                const detalle = res.serial_number ? `Serial: ${res.serial_number}` : "Claves generadas";
+                showMsg(` Certificado emitido correctamente. (${detalle})`, 'success');
+            } catch (err) {
+                console.error(err);
+                showMsg(`Error: ${err.message}`, 'error');
+            }
+        });
+
+        // --- 2. DESCARGAR LLAVE PÚBLICA (NUEVO) ---
+        document.getElementById('btn-download-key').addEventListener('click', async () => {
+            statusDiv.style.display = 'none';
+            try {
+                // Usamos fetch para manejar errores si el archivo no existe
+                const response = await fetch(`${API_URL}/descargar-publica/${usuarioId}`);
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    // Nombre sugerido para el archivo
+                    a.download = `public_key_usuario_${usuarioId}.pem`; 
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    document.body.removeChild(a);
+                    showMsg(" Llave pública descargada.", "success");
+                } else {
+                    const errText = await response.text();
+                    // Si da error 404, es probable que no haya emitido el certificado aún
+                    if(response.status === 404) {
+                        showMsg("⚠ No se encontró la llave. Primero debes 'Emitir Certificado'.", "error");
+                    } else {
+                        showMsg(`Error descargando llave: ${errText}`, "error");
+                    }
+                }
+            } catch (err) {
+                showMsg(`Error de conexión: ${err.message}`, "error");
+            }
+        });
+
+        // --- 3. FIRMAR PDF ---
+        document.getElementById('sign-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            statusDiv.style.display = 'none';
+            
+            if(fileInput.files.length === 0) return;
+
+            try {
+                showMsg("Generando firma criptográfica...", "info");
+                
+                // Solo descarga la firma (.bin)
+                const blob = await firmarPDF(usuarioId, fileInput.files[0]);
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `firma_${Date.now()}.bin`; 
+                document.body.appendChild(a);
+                a.click();
+                
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showMsg("¡Firmado! Se ha descargado el archivo .bin de la firma.", "success");
+            } catch (err) {
+                showMsg(`Error al firmar: ${err.message}`, 'error');
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verificación Pública</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        /* Estilos para las pestañas de selección */
+        .tab-container {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 20px;
+            gap: 10px;
+        }
+        .tab-btn {
+            background: transparent;
+            border: 1px solid var(--neon-cyan);
+            color: var(--neon-cyan);
+            padding: 10px 20px;
+            cursor: pointer;
+            font-family: 'Orbitron', sans-serif;
+            transition: 0.3s;
+        }
+        .tab-btn.active {
+            background: var(--neon-cyan);
+            color: black;
+            box-shadow: 0 0 15px var(--neon-cyan);
+        }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo"> Verificador de Firmas</div>
+        <nav><a href="index.html">Volver al Inicio</a></nav>
+    </header>
+
+    <div class="container">
+        <h2>Validación de Integridad</h2>
+        <p>Selecciona el método de verificación:</p>
+
+        <div class="tab-container">
+            <button id="btn-tab-bd" class="tab-btn active" onclick="switchTab('bd')">
+                Base de Datos (Interno)
+            </button>
+            <button id="btn-tab-ext" class="tab-btn" onclick="switchTab('ext')">
+                Llave Pública (Auditoría Externa)
+            </button>
+        </div>
+
+        <div class="card">
+            <form id="verify-form-bd">
+                <h3 style="margin-top:0; color:var(--neon-cyan)">Modo: Consulta Interna</h3>
+                <p style="font-size:0.9em">Verifica contra los registros guardados en el servidor.</p>
+                
+                <div class="form-group">
+                    <label>ID del Firmante</label>
+                    <input type="number" id="v-usuario-id" required placeholder="Ej: 1">
+                </div>
+
+                <div class="form-group">
+                    <label>1. Documento Original (.pdf)</label>
+                    <input type="file" id="v-file-original" accept="application/pdf" required>
+                </div>
+
+                <div class="form-group">
+                    <label>2. Archivo de Firma (.bin)</label>
+                    <input type="file" id="v-file-sign" required>
+                </div>
+
+                <button type="submit" class="btn btn-success">Verificar con BD</button>
+            </form>
+
+            <form id="verify-form-ext" class="hidden">
+                <h3 style="margin-top:0; color:var(--neon-pink)">Modo: Auditoría Forense</h3>
+                <p style="font-size:0.9em">Verifica matemáticamente usando la Llave Pública (.pem), sin depender del servidor.</p>
+
+                <div class="form-group">
+                    <label> Llave Pública del Firmante (.pem / .key)</label>
+                    <input type="file" id="v-ext-key" required>
+                </div>
+
+                <div class="form-group">
+                    <label> Documento Original (.pdf)</label>
+                    <input type="file" id="v-ext-original" accept="application/pdf" required>
+                </div>
+
+                <div class="form-group">
+                    <label> Archivo de Firma (.bin)</label>
+                    <input type="file" id="v-ext-sign" required>
+                </div>
+
+                <button type="submit" class="btn btn-success" style="border-color: var(--neon-pink); color: var(--neon-pink);">
+                    Auditar Matemáticamente
+                </button>
+            </form>
+        </div>
+
+        <div id="result-area" class="card" style="display:none; text-align:center;">
+            <h2 id="res-title" style="margin-top:0;"></h2>
+            <p id="res-desc" style="font-size: 1.1em;"></p>
+        </div>
+    </div>
+
+    <script type="module">
+        // Importamos AMBAS funciones
+        import { verificarFirma, verificarFirmaExterna } from './js/api.js';
+
+        // Lógica de Tabs
+        window.switchTab = (mode) => {
+            const formBd = document.getElementById('verify-form-bd');
+            const formExt = document.getElementById('verify-form-ext');
+            const btnBd = document.getElementById('btn-tab-bd');
+            const btnExt = document.getElementById('btn-tab-ext');
+            const resArea = document.getElementById('result-area');
+
+            // Ocultar resultados previos al cambiar pestaña
+            resArea.style.display = 'none';
+
+            if (mode === 'bd') {
+                formBd.classList.remove('hidden');
+                formExt.classList.add('hidden');
+                btnBd.classList.add('active');
+                btnExt.classList.remove('active');
+            } else {
+                formBd.classList.add('hidden');
+                formExt.classList.remove('hidden');
+                btnBd.classList.remove('active');
+                btnExt.classList.add('active');
+            }
+        };
+
+        const resultArea = document.getElementById('result-area');
+        const resTitle = document.getElementById('res-title');
+        const resDesc = document.getElementById('res-desc');
+
+        // Función Helper para mostrar resultado
+        function mostrarResultado(response) {
+            resultArea.style.display = 'block';
+            if (response.resultado === "VALIDO") {
+                resTitle.innerText = " FIRMA VÁLIDA";
+                resTitle.style.color = "#27ae60";
+                resDesc.innerText = response.detalle || "El documento es auténtico.";
+                resultArea.style.border = "2px solid #27ae60";
+            } else {
+                resTitle.innerText = " FIRMA INVÁLIDA";
+                resTitle.style.color = "#c0392b";
+                resDesc.innerText = response.detalle || "Fallo de validación.";
+                resultArea.style.border = "2px solid #c0392b";
+            }
+        }
+
+        function mostrarError(err) {
+            resultArea.style.display = 'block';
+            resTitle.innerText = "⚠ Error Técnico";
+            resTitle.style.color = "#e67e22";
+            resDesc.innerText = err.message;
+            resultArea.style.border = "2px solid #e67e22";
+        }
+
+        // --- EVENTO: VERIFICACIÓN BD (INTERNA) ---
+        document.getElementById('verify-form-bd').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('v-usuario-id').value;
+            const original = document.getElementById('v-file-original').files[0];
+            const signature = document.getElementById('v-file-sign').files[0];
+
+            try {
+                const response = await verificarFirma(id, original, signature);
+                mostrarResultado(response);
+            } catch (err) { mostrarError(err); }
+        });
+
+        // --- EVENTO: VERIFICACIÓN EXTERNA (NUEVA) ---
+        document.getElementById('verify-form-ext').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const key = document.getElementById('v-ext-key').files[0];
+            const original = document.getElementById('v-ext-original').files[0];
+            const signature = document.getElementById('v-ext-sign').files[0];
+
+            try {
+                // Llamamos a la nueva función de api.js
+                const response = await verificarFirmaExterna(original, signature, key);
+                mostrarResultado(response);
+            } catch (err) { mostrarError(err); }
+        });
+    </script>
+</body>
+</html>

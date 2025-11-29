@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso - Firma Digital</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        /* Estilos específicos para la tarjeta de ÉXITO del ID */
+        #success-card {
+            display: none; /* Oculto por defecto */
+            border: 2px solid #0aff0a; /* Verde Neon */
+            background-color: rgba(0, 20, 0, 0.95);
+            text-align: center;
+            animation: fadeIn 0.5s ease-in-out;
+            margin-top: 20px;
+        }
+        
+        .id-display {
+            font-size: 4rem; /* ID GIGANTE */
+            font-weight: bold;
+            color: #0aff0a;
+            text-shadow: 0 0 20px rgba(10, 255, 10, 0.5);
+            margin: 10px 0;
+            font-family: 'Orbitron', sans-serif;
+            letter-spacing: 5px;
+        }
+
+        .save-warning {
+            color: #e0e6ed;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo"> Sistema de Firma Digital</div>
+        <nav><a href="verificar.html">Ir a Verificador Público</a></nav>
+    </header>
+
+    <div class="container">
+        <h2>Bienvenido</h2>
+        <p style="text-align:center; color:#7f8c8d;">Identifícate o crea una cuenta para firmar documentos.</p>
+
+        <div id="success-card" class="card">
+            <h3> USUARIO CREADO CON ÉXITO</h3>
+            <p>Tu Identificador Único de Acceso es:</p>
+            
+            <div id="big-id-number" class="id-display">--</div>
+            
+            <p class="save-warning">⚠ ¡ANÓTALO! Sin este número no podrás entrar.</p>
+            <button id="btn-continue" class="btn btn-success">Entendido, ir al Dashboard</button>
+        </div>
+
+        <div class="card" id="register-card">
+            <h3> Crear Nueva Identidad</h3>
+            <form id="register-form">
+                <div class="form-group">
+                    <label>Nombre Completo</label>
+                    <input type="text" id="nombre" required placeholder="Tu nombre real">
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="email" required placeholder="correo@ejemplo.com">
+                </div>
+                <button type="submit" id="btn-crear" class="btn-success">Crear Usuario</button>
+            </form>
+        </div>
+
+        <div class="card" id="login-card">
+            <h3>👤 Ya tengo cuenta</h3>
+            <form id="login-form">
+                <div class="form-group">
+                    <label>ID de Usuario</label>
+                    <input type="number" id="login-id" placeholder="Ej: 1" required>
+                </div>
+                <button type="submit" class="btn">Ingresar al Dashboard</button>
+            </form>
+        </div>
+        
+        <div id="status-msg" class="status-msg"></div>
+    </div>
+
+    <script>
+        // --- CONFIGURACIÓN ---
+        var API_URL = 'http://127.0.0.1:8000'; 
+
+        var statusDiv = document.getElementById('status-msg');
+        var successCard = document.getElementById('success-card');
+        var registerCard = document.getElementById('register-card');
+        var bigIdNumber = document.getElementById('big-id-number');
+
+        function showMsg(msg, type) {
+            statusDiv.className = 'status-msg ' + type;
+            statusDiv.innerText = msg;
+            statusDiv.style.display = 'block';
+        }
+
+        // LÓGICA DE REGISTRO
+        document.getElementById('register-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            var nombre = document.getElementById('nombre').value.trim();
+            var email = document.getElementById('email').value.trim();
+            var btnCrear = document.getElementById('btn-crear');
+
+            // 1. UI: Bloquear botón
+            btnCrear.disabled = true;
+            btnCrear.innerText = "Generando llaves...";
+            showMsg("Conectando con el servidor de criptografía...", "info");
+
+            // 2. PETICIÓN FETCH AL BACKEND
+            fetch(API_URL + '/usuarios/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    nombre: nombre,
+                    email: email
+                })
+            })
+            .then(function(response) {
+                if (!response.ok) {
+                    return response.json().then(function(err) { throw new Error(err.detail || 'Error desconocido'); });
+                }
+                return response.json();
+            })
+            .then(function(data) {
+                // 3. ÉXITO
+                console.log("Usuario creado:", data);
+
+                // Guardar en sesión
+                sessionStorage.setItem('usuario_id', data.id);
+                sessionStorage.setItem('usuario_nombre', data.nombre);
+                
+                // --- NUEVA FUNCIONALIDAD VISUAL ---
+                
+                // A) Llenar el ID en el login (por si acaso)
+                document.getElementById('login-id').value = data.id;
+
+                // B) Ocultar formulario de registro para limpiar la pantalla
+                registerCard.style.display = 'none';
+                
+                // C) Mostrar la tarjeta gigante con el ID
+                bigIdNumber.innerText = data.id;
+                successCard.style.display = 'block';
+                
+                // D) Mostrar alerta clásica también
+                var mensaje = "ID GENERADO: " + data.id + "\n\nGuárdalo bien.";
+                alert(mensaje);
+                
+                showMsg("¡Usuario creado correctamente!", "success");
+            })
+            .catch(function(error) {
+                // 4. ERROR
+                console.error("Error:", error);
+                
+                var textoError = error.message;
+                if (textoError.includes("Failed to fetch")) {
+                    textoError = "No se puede conectar al servidor Python. ¿Está encendido?";
+                }
+                
+                showMsg("Error: " + textoError, "error");
+                btnCrear.disabled = false;
+                btnCrear.innerText = "Crear Usuario";
+            });
+        });
+
+        // Botón "Continuar" dentro de la tarjeta de éxito
+        document.getElementById('btn-continue').addEventListener('click', function() {
+            window.location.href = 'dashboard.html';
+        });
+
+        // Lógica de Login
+        document.getElementById('login-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            var id = document.getElementById('login-id').value.trim();
+            if(id) {
+                sessionStorage.setItem('usuario_id', id);
+                window.location.href = 'dashboard.html';
+            }
+        });
+    </script>
+</body>
+</html>
